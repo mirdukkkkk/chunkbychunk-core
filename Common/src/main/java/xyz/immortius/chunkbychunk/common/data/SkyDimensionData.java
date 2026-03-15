@@ -41,7 +41,7 @@ public class SkyDimensionData {
     public Map<String, List<String>> biomeThemes = new LinkedHashMap<>();
 
     public boolean validate(ResourceLocation dataId, MappedRegistry<LevelStem> dimensions) {
-        if (!dimensions.containsKey(new ResourceLocation(dimensionId))) {
+        if (!dimensions.containsKey(ResourceLocation.parse(dimensionId))) {
             ChunkByChunkConstants.LOGGER.error("Invalid dimension '{}' for sky dimension {}", dimensionId, dataId);
             return false;
         }
@@ -50,7 +50,7 @@ public class SkyDimensionData {
             return false;
         }
         for (String dim : synchToDimensions) {
-            if (!dimensions.containsKey(new ResourceLocation(dim))) {
+            if (!dimensions.containsKey(ResourceLocation.parse(dim))) {
                 ChunkByChunkConstants.LOGGER.error("Invalid dimension '{}' for sky dimension {}", dim, dataId);
                 return false;
             }
@@ -60,9 +60,9 @@ public class SkyDimensionData {
 
     public ResourceLocation getGenDimensionId() {
         if (genDimensionId == null) {
-            return new ResourceLocation(dimensionId + "_gen");
+            return ResourceLocation.parse(dimensionId + "_gen");
         } else {
-            return new ResourceLocation(genDimensionId);
+            return ResourceLocation.parse(genDimensionId);
         }
     }
 }

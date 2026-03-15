@@ -9,6 +9,7 @@ import net.minecraft.world.inventory.SimpleContainerData;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.MapItem;
+import net.minecraft.world.level.saveddata.maps.MapId;
 import xyz.immortius.chunkbychunk.common.blockEntities.WorldScannerBlockEntity;
 import xyz.immortius.chunkbychunk.interop.Services;
 
@@ -55,7 +56,7 @@ public class WorldScannerMenu extends BaseInventoryContainerMenu {
     }
 
     public String getMapKey() {
-        return MapItem.makeKey(this.containerData.get(WorldScannerBlockEntity.DATA_MAP));
+        return new MapId(this.containerData.get(WorldScannerBlockEntity.DATA_MAP)).toString();
     }
 
     public int getMapId() {

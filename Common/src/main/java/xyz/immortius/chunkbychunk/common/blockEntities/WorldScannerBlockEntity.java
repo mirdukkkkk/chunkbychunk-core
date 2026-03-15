@@ -5,6 +5,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Multimap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.Packet;
@@ -23,6 +24,7 @@ import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.levelgen.WorldgenRandom;
 import net.minecraft.world.level.material.FlowingFluid;
 import net.minecraft.world.level.material.MapColor;
+import net.minecraft.world.level.saveddata.maps.MapId;
 import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import xyz.immortius.chunkbychunk.common.data.ScannerData;
 import xyz.immortius.chunkbychunk.common.menus.WorldScannerMenu;
@@ -86,7 +88,7 @@ public class WorldScannerBlockEntity extends BaseFueledBlockEntity {
 
     private static final int[] SCAN_COLOR_THRESHOLD = {0, 1, 4, 8, 16, 32, 64, 128, 256, 512, 2048, 8192, 16384};
 
-    private int map = NO_MAP;
+    private MapId map = null;
     private int scanCharge = 0;
     private final SpiralIterator scanIterator = new SpiralIterator();
     private int tickUntilReplicate = 0;
@@ -94,7 +96,7 @@ public class WorldScannerBlockEntity extends BaseFueledBlockEntity {
     protected final ContainerData dataAccess = new ContainerData() {
         public int get(int id) {
             return switch (id) {
-                case DATA_MAP -> map;
+                case DATA_MAP -> map != null ? map.id() : NO_MAP;
                 case DATA_ENERGY -> getRemainingFuel();
                 case DATA_MAX_ENERGY -> getChargedFuel();
                 case DATA_SCANNING_X -> scanIterator.getX();
@@ -105,7 +107,7 @@ public class WorldScannerBlockEntity extends BaseFueledBlockEntity {
 
         public void set(int id, int value) {
             switch (id) {
-                case DATA_MAP -> map = value;
+                case DATA_MAP -> map = value == NO_MAP ? null : new MapId(value);
             }
         }
 
@@ -141,17 +143,18 @@ public class WorldScannerBlockEntity extends BaseFueledBlockEntity {
     }
 
     @Override
-    public void load(CompoundTag tag) {
-        super.load(tag);
-        map = tag.getInt("Map");
+    protected void loadAdditional(CompoundTag tag, HolderLookup.Provider provider) {
+        super.loadAdditional(tag, provider);
+        int mapId = tag.getInt("Map");
+        map = mapId == NO_MAP ? null : new MapId(mapId);
         scanIterator.load(tag.getCompound("ScanIterator"));
         scanCharge = tag.getInt("ScanCharge");
     }
 
     @Override
-    protected void saveAdditional(CompoundTag tag) {
-        super.saveAdditional(tag);
-        tag.putInt("Map", map);
+    protected void saveAdditional(CompoundTag tag, HolderLookup.Provider provider) {
+        super.saveAdditional(tag, provider);
+        tag.putInt("Map", map != null ? map.id() : NO_MAP);
         tag.put("ScanIterator", scanIterator.createTag());
         tag.putInt("ScanCharge", scanCharge);
     }
@@ -184,7 +187,7 @@ public class WorldScannerBlockEntity extends BaseFueledBlockEntity {
             // If there is enough charge to scan a chunk, do so
             int chunkCost = ChunkByChunkConfig.get().getWorldScannerConfig().getFuelRequiredPerChunk();
             if (entity.scanCharge >= chunkCost) {
-                if (entity.map == NO_MAP) {
+                if (entity.map == null) {
                     entity.createMap();
                 }
 
@@ -232,7 +235,7 @@ public class WorldScannerBlockEntity extends BaseFueledBlockEntity {
                 }
 
                 // Update the map
-                MapItemSavedData data = entity.getLevel().getMapData(MapItem.makeKey(entity.map));
+                MapItemSavedData data = entity.getLevel().getMapData(entity.map);
                 for (int innerX = 0; innerX < SCAN_ZOOM; innerX++) {
                     for (int innerZ = 0; innerZ < SCAN_ZOOM; innerZ++) {
                         int pixelX = entity.scanIterator.getX() * SCAN_ZOOM + innerX;
@@ -252,7 +255,7 @@ public class WorldScannerBlockEntity extends BaseFueledBlockEntity {
 
         // Trigger map replication
         if (changed || entity.tickUntilReplicate <= 0) {
-            MapItemSavedData mapitemsaveddata = level.getMapData(MapItem.makeKey(entity.map));
+            MapItemSavedData mapitemsaveddata = level.getMapData(entity.map);
             if (mapitemsaveddata != null) {
                 for (ServerPlayer serverplayer : serverLevel.players()) {
                     // Add players to tracking
@@ -270,12 +273,12 @@ public class WorldScannerBlockEntity extends BaseFueledBlockEntity {
     }
 
     private void createMap() {
-        if (map == NO_MAP) {
+        if (map == null) {
             ChunkPos pos = new ChunkPos(getBlockPos());
 
             MapItemSavedData data = MapItemSavedData.createFresh(pos.getMaxBlockX(), pos.getMaxBlockZ(), (byte) 2, false, false, level.dimension()).locked();
             map = level.getFreeMapId();
-            level.setMapData(MapItem.makeKey(map), data);
+            level.setMapData(map, data);
         }
     }
 
@@ -309,8 +312,8 @@ public class WorldScannerBlockEntity extends BaseFueledBlockEntity {
     }
 
     private void resetScan() {
-        if (map != NO_MAP) {
-            MapItemSavedData data = getLevel().getMapData(MapItem.makeKey(map));
+        if (map != null) {
+            MapItemSavedData data = getLevel().getMapData(map);
             if (data != null) {
                 for (int x = 0; x < MapItem.IMAGE_WIDTH; x++) {
                     for (int y = 0; y < MapItem.IMAGE_HEIGHT; y++) {

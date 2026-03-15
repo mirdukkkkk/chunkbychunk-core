@@ -2,6 +2,7 @@ package xyz.immortius.chunkbychunk.common.blockEntities;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.core.NonNullList;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.tags.TagKey;
@@ -84,21 +85,21 @@ public abstract class BaseFueledBlockEntity extends BaseContainerBlockEntity imp
     }
 
     @Override
-    public void load(CompoundTag tag) {
-        super.load(tag);
+    protected void loadAdditional(CompoundTag tag, HolderLookup.Provider provider) {
+        super.loadAdditional(tag, provider);
         this.items = NonNullList.withSize(this.getContainerSize(), ItemStack.EMPTY);
-        ContainerHelper.loadAllItems(tag, this.items);
+        ContainerHelper.loadAllItems(tag, this.items, provider);
         this.chargedFuel = tag.getInt("ChargedFuel");
         this.remainingFuel = tag.getInt("RemainingFuel");
 
     }
 
     @Override
-    protected void saveAdditional(CompoundTag tag) {
-        super.saveAdditional(tag);
+    protected void saveAdditional(CompoundTag tag, HolderLookup.Provider provider) {
+        super.saveAdditional(tag, provider);
         tag.putInt("ChargedFuel", this.chargedFuel);
         tag.putInt("RemainingFuel", this.remainingFuel);
-        ContainerHelper.saveAllItems(tag, this.items);
+        ContainerHelper.saveAllItems(tag, this.items, provider);
     }
 
     /**
@@ -178,6 +179,16 @@ public abstract class BaseFueledBlockEntity extends BaseContainerBlockEntity imp
     @Override
     public void clearContent() {
         items.clear();
+    }
+
+    @Override
+    protected void setItems(NonNullList<ItemStack> items) {
+        this.items = items;
+    }
+
+    @Override
+    public NonNullList<ItemStack> getItems() {
+        return this.items;
     }
 
     @Override

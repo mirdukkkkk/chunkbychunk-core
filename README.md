@@ -6,7 +6,7 @@ core concept.
 
 ## Developing
 
-This project requires [JDK 17](https://adoptium.net/) & uses the [MultiLoader Template](https://github.com/jaredlll08/MultiLoader-Template) provided by [jaredlll08](https://github.com/jaredlll08).
+This project requires [JDK 21](https://adoptium.net/) & uses the [MultiLoader Template](https://github.com/jaredlll08/MultiLoader-Template) provided by [jaredlll08](https://github.com/jaredlll08).
 
 ## Credits
 

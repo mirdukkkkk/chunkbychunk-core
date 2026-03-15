@@ -2,6 +2,7 @@ package xyz.immortius.chunkbychunk.common.blockEntities;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.core.NonNullList;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
@@ -157,6 +158,16 @@ public class WorldMenderBlockEntity extends BaseContainerBlockEntity implements 
     }
 
     @Override
+    protected void setItems(NonNullList<ItemStack> items) {
+        this.items = items;
+    }
+
+    @Override
+    public NonNullList<ItemStack> getItems() {
+        return this.items;
+    }
+
+    @Override
     public ItemStack removeItem(int slot, int split) {
         return ContainerHelper.removeItem(items, slot, split);
     }
@@ -227,18 +238,18 @@ public class WorldMenderBlockEntity extends BaseContainerBlockEntity implements 
     // Serialization
 
     @Override
-    public void load(CompoundTag tag) {
-        super.load(tag);
+    protected void loadAdditional(CompoundTag tag, HolderLookup.Provider provider) {
+        super.loadAdditional(tag, provider);
         this.cooldown = tag.getInt("Cooldown");
         this.items = NonNullList.withSize(this.getContainerSize(), ItemStack.EMPTY);
         this.chunksSpawned = tag.getInt("ChunksSpawned");
-        ContainerHelper.loadAllItems(tag, this.items);
+        ContainerHelper.loadAllItems(tag, this.items, provider);
     }
 
     @Override
-    protected void saveAdditional(CompoundTag tag) {
-        super.saveAdditional(tag);
-        ContainerHelper.saveAllItems(tag, this.items);
+    protected void saveAdditional(CompoundTag tag, HolderLookup.Provider provider) {
+        super.saveAdditional(tag, provider);
+        ContainerHelper.saveAllItems(tag, this.items, provider);
         tag.putInt("Cooldown", cooldown);
         tag.putInt("ChunksSpawned", chunksSpawned);
     }

@@ -7,9 +7,6 @@ import net.minecraft.util.Mth;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-/**
- * A slider for picking integers within a range.
- */
 public class IntegerSlider extends AbstractSliderButton {
     private final Supplier<Integer> getter;
     private final Consumer<Integer> setter;
@@ -29,20 +26,19 @@ public class IntegerSlider extends AbstractSliderButton {
 
     @Override
     protected void updateMessage() {
-        setMessage(Component.literal(valueName.getString() + ": " + getter.get()));
+        setMessage(Component.empty().append(valueName).append(": ").append(String.valueOf(getter.get())));
     }
 
     @Override
     protected void applyValue() {
-        setter.accept(Mth.floor(Mth.clamp(this.value, 0.0D, 1.0D) * (maxValue - minValue) + minValue));
+        setter.accept(Mth.floor(Mth.clampedLerp(minValue, maxValue, this.value)));
     }
 
     public void setValue(int newValue) {
         if (newValue >= minValue && newValue <= maxValue) {
             setter.accept(newValue);
-            value = (double) (getter.get() - minValue) / (maxValue - minValue);
+            this.value = (double) (newValue - minValue) / (maxValue - minValue);
             updateMessage();
         }
     }
-
 }

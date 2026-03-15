@@ -1,85 +1,54 @@
 package xyz.immortius.chunkbychunk.client.screens;
 
-import com.mojang.blaze3d.vertex.Tesselator;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.MapRenderer;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
-import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Inventory;
-import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import xyz.immortius.chunkbychunk.common.ChunkByChunkConstants;
-import xyz.immortius.chunkbychunk.common.blockEntities.WorldScannerBlockEntity;
 import xyz.immortius.chunkbychunk.common.menus.WorldScannerMenu;
+import xyz.immortius.chunkbychunk.common.util.SpiralIterator;
 
-/**
- * Screen for the WorldScanner. Renders the scanned map (if any)
- */
 public class WorldScannerScreen extends AbstractContainerScreen<WorldScannerMenu> {
-    private static final ResourceLocation CONTAINER_TEXTURE = new ResourceLocation(ChunkByChunkConstants.MOD_ID + ":textures/gui/container/worldscanner.png");
+    public static final ResourceLocation CONTAINER_TEXTURE = ResourceLocation.fromNamespaceAndPath(ChunkByChunkConstants.MOD_ID, "textures/gui/container/worldscanner.png");
 
     private static final int MAIN_TEXTURE_DIM = 512;
-    private static final int MAP_DIMENSIONS = 128;
     private static final float TICKS_PER_FRAME = 4f;
     private static final int NUM_FRAMES = 8;
+    private static final int HIGHLIGHT_SIZE = 128;
+    private static final int HIGHLIGHT_INSET_X = 24;
+    private static final int HIGHLIGHT_INSET_Y = 13;
+
+    private static final int[][] NODE_OFFSETS = new int[][] {{3},{5,3},{6,5,3},{7,6,5,3},{7,7,7,6,4},{7,8,8,8,7,4},{7,8,9,9,9,7,5}};
 
     private float animCounter = 0.f;
-    private MapRenderer mapRenderer;
 
     public WorldScannerScreen(WorldScannerMenu menu, Inventory inventory, Component component) {
         super(menu, inventory, component);
-        imageWidth = 310;
-        imageHeight = 166;
+        imageWidth = 176;
+        imageHeight = 235;
+        titleLabelX = 8;
+        titleLabelY = 4;
+        inventoryLabelX = 8;
+        inventoryLabelY = 143;
     }
 
     @Override
     protected void init() {
         super.init();
-        mapRenderer = minecraft.gameRenderer.getMapRenderer();
-    }
-
-    @Override
-    public void onClose() {
-        super.onClose();
     }
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
-        this.renderBackground(graphics, mouseX, mouseY, delta);
         super.render(graphics, mouseX, mouseY, delta);
         this.renderTooltip(graphics, mouseX, mouseY);
     }
 
     @Override
-    protected void renderTooltip(GuiGraphics graphics, int cursorX, int cursorY) {
-        super.renderTooltip(graphics, cursorX, cursorY);
-        int mapX = cursorX - 174 - leftPos;
-        int mapY = cursorY - 18 - topPos;
-        if (mapX >= 0 && mapY >= 0 && mapX < MAP_DIMENSIONS && mapY < MAP_DIMENSIONS) {
-            mapX = mapX / WorldScannerBlockEntity.SCAN_ZOOM - WorldScannerBlockEntity.SCAN_CENTER;
-            mapY = mapY / WorldScannerBlockEntity.SCAN_ZOOM - WorldScannerBlockEntity.SCAN_CENTER;
-            StringBuilder builder = new StringBuilder();
-            if (mapY < 0) {
-                builder.append(-mapY);
-                builder.append(" N ");
-            } else if (mapY > 0) {
-                builder.append(mapY);
-                builder.append(" S ");
-            }
-            if (mapX < 0) {
-                builder.append(-mapX);
-                builder.append(" W");
-            } else if (mapX > 0) {
-                builder.append(mapX);
-                builder.append(" E");
-            }
-
-            if (builder.length() > 0) {
-                graphics.renderTooltip(this.font, Component.literal(builder.toString()), cursorX, cursorY);
-            }
-        }
+    protected void renderLabels(GuiGraphics graphics, int mouseX, int mouseY) {
+        graphics.drawString(this.font, this.title, this.titleLabelX, this.titleLabelY, 4210752, false);
+        graphics.drawString(this.font, this.playerInventoryTitle, this.inventoryLabelX, this.inventoryLabelY, 4210752, false);
     }
 
     @Override
@@ -88,31 +57,43 @@ public class WorldScannerScreen extends AbstractContainerScreen<WorldScannerMenu
         while (animCounter > TICKS_PER_FRAME * NUM_FRAMES) {
             animCounter -= TICKS_PER_FRAME * NUM_FRAMES;
         }
+
         int frame = Mth.floor(animCounter / TICKS_PER_FRAME);
 
+        int highlightOffsetX = imageWidth + (frame / 4) * HIGHLIGHT_SIZE;
+        int highlightOffsetY = HIGHLIGHT_SIZE * (frame % 4);
+
         graphics.blit(CONTAINER_TEXTURE, leftPos, topPos, 0, 0, this.imageWidth, this.imageHeight, MAIN_TEXTURE_DIM, MAIN_TEXTURE_DIM);
-        if (menu.getEnergy() > 0) {
-            int display = Mth.ceil(7.f * menu.getEnergy() / menu.getMaxEnergy());
-            graphics.blit(CONTAINER_TEXTURE, leftPos + 54, topPos + 56, 128 + 12 * display, 166 + 12 * frame, 13, 13, MAIN_TEXTURE_DIM, MAIN_TEXTURE_DIM);
-        }
+
         if (menu.isMapAvailable()) {
-            renderMap(graphics);
+            Pos blitPos = getChunkPos(menu.getCurrentChunkX(), menu.getCurrentChunkZ());
+            graphics.blit(CONTAINER_TEXTURE, HIGHLIGHT_INSET_X + leftPos + blitPos.x, HIGHLIGHT_INSET_Y + topPos + blitPos.y, (float) (highlightOffsetX + blitPos.x), (float) (highlightOffsetY + blitPos.y), 2, 2, MAIN_TEXTURE_DIM, MAIN_TEXTURE_DIM);
         }
-        graphics.blit(CONTAINER_TEXTURE, leftPos + 234, topPos + 78, 124, 166 + frame * 4, 4, 4, MAIN_TEXTURE_DIM, MAIN_TEXTURE_DIM);
-
     }
 
-    private void renderMap(GuiGraphics graphics) {
-        graphics.pose().pushPose();
-        graphics.pose().translate(leftPos + 174, topPos + 18, 1.0D);
-        MultiBufferSource.BufferSource buffer = MultiBufferSource.immediate(Tesselator.getInstance().getBuilder());
-        MapItemSavedData mapData = this.minecraft.level.getMapData(menu.getMapKey());
-        if (mapData != null) {
-            mapRenderer.render(graphics.pose(), buffer, menu.getMapId(), mapData, true, 0xFFFFFF);
-        }
-        buffer.endBatch();
-        graphics.pose().popPose();
+    @Override
+    public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
+        super.renderBackground(graphics, mouseX, mouseY, delta);
     }
 
+    private Pos getChunkPos(int chunkX, int chunkZ) {
+        int absX = Mth.abs(chunkX);
+        int absY = Mth.abs(chunkZ);
+        int sigX = Mth.sign(chunkX);
+        int sigY = Mth.sign(chunkZ);
 
+        int xOffset = chunkX * 7 + 6 * sigX + 63;
+        int yOffset = chunkZ * 7 + 6 * sigY + 63;
+
+        if (absX > 0 && absY > absX) {
+            xOffset -= sigX * NODE_OFFSETS[absY - 2][absX - 1];
+        } else if (absY > 0 && absX > absY) {
+            yOffset -= sigY * NODE_OFFSETS[absX - 2][absY - 1];
+        }
+
+        return new Pos(xOffset, yOffset);
+    }
+
+    private record Pos(int x, int y) {
+    }
 }

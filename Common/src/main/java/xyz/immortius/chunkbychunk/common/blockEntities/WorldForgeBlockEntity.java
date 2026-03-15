@@ -15,6 +15,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.core.HolderLookup;
 import xyz.immortius.chunkbychunk.common.menus.WorldForgeMenu;
 import xyz.immortius.chunkbychunk.config.ChunkByChunkConfig;
 import xyz.immortius.chunkbychunk.interop.Services;
@@ -44,9 +45,9 @@ public class WorldForgeBlockEntity extends BaseFueledBlockEntity {
     private static final int[] SLOTS_FOR_UP = new int[]{SLOT_INPUT};
     private static final int[] SLOTS_FOR_DOWN = new int[]{SLOT_RESULT};
 
-    private static final TagKey<Item> SOIL_FUEL_TAG = TagKey.create(Registries.ITEM, new ResourceLocation("chunkbychunk:weakworldforgefuel"));
-    private static final TagKey<Item> STONE_FUEL_TAG = TagKey.create(Registries.ITEM, new ResourceLocation("chunkbychunk:worldforgefuel"));
-    private static final TagKey<Item> STRONG_FUEL_TAG = TagKey.create(Registries.ITEM, new ResourceLocation("chunkbychunk:strongworldforgefuel"));
+    private static final TagKey<Item> SOIL_FUEL_TAG = TagKey.create(Registries.ITEM, ResourceLocation.parse("chunkbychunk:weakworldforgefuel"));
+    private static final TagKey<Item> STONE_FUEL_TAG = TagKey.create(Registries.ITEM, ResourceLocation.parse("chunkbychunk:worldforgefuel"));
+    private static final TagKey<Item> STRONG_FUEL_TAG = TagKey.create(Registries.ITEM, ResourceLocation.parse("chunkbychunk:strongworldforgefuel"));
 
     private int progress;
     private int goal;
@@ -117,14 +118,14 @@ public class WorldForgeBlockEntity extends BaseFueledBlockEntity {
     }
 
     @Override
-    public void load(CompoundTag tag) {
-        super.load(tag);
+    protected void loadAdditional(CompoundTag tag, HolderLookup.Provider provider) {
+        super.loadAdditional(tag, provider);
         this.progress = tag.getInt("Progress");
     }
 
     @Override
-    protected void saveAdditional(CompoundTag tag) {
-        super.saveAdditional(tag);
+    protected void saveAdditional(CompoundTag tag, HolderLookup.Provider provider) {
+        super.saveAdditional(tag, provider);
         tag.putInt("Progress", this.progress);
     }
 

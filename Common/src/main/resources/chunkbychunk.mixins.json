@@ -3,7 +3,7 @@
   "minVersion": "0.8",
   "package": "xyz.immortius.chunkbychunk.mixins",
   "refmap": "${mod_id}.refmap.json",
-  "compatibilityLevel": "JAVA_17",
+  "compatibilityLevel": "JAVA_18",
   "mixins": [
     "EntityChangeDimensionMixin",
     "BucketFluidAccessor",
@@ -11,8 +11,7 @@
     "ChunkMapMixin",
     "OverworldBiomeBuilderAccessor"
   ],
-  "client": [
-  ],
+  "client": [],
   "injectors": {
     "defaultRequire": 1
   }

@@ -145,6 +145,6 @@ public final class ForgePlatformHelper implements CBCPlatformHelper {
 
     @Override
     public Fluid getFluidContent(BucketItem bucketItem) {
-        return bucketItem.getFluid();
+        return ((net.minecraft.world.item.BucketItem) bucketItem).content;
     }
 }

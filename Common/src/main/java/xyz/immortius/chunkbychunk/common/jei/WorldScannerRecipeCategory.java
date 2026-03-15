@@ -23,7 +23,7 @@ import java.util.Collections;
 
 public class WorldScannerRecipeCategory  implements IRecipeCategory<WorldScannerRecipe> {
 
-    private static final ResourceLocation BACKGROUND_TEXTURE = new ResourceLocation(ChunkByChunkConstants.MOD_ID + ":textures/gui/container/worldscannerjei.png");
+    private static final ResourceLocation BACKGROUND_TEXTURE = ResourceLocation.parse(ChunkByChunkConstants.MOD_ID + ":textures/gui/container/worldscannerjei.png");
 
     private final IDrawable icon;
     private final IDrawable background;

@@ -24,13 +24,16 @@ public class ChunkByChunkConfigScreen extends Screen {
         settingsList = new SettingListWidget(minecraft, this, width, 22, height - 44, (int) (0.9f * width));
 
         int w = (width / 3 - 60) / 2;
+
         resetButton = Button.builder(Component.translatable("controls.reset"), button -> {
             settingsList.reset();
         }).pos(w, height - 32).size(60, 20).build();
+
         cancelButton = Button.builder(Component.translatable("gui.cancel"), button -> {
             ConfigUtil.loadDefaultConfig();
             this.minecraft.setScreen(lastScreen);
         }).pos(width / 3 + w, height - 32).size(60, 20).build();
+
         saveButton = Button.builder(Component.translatable("selectWorld.edit.save"), button -> {
             ConfigUtil.saveDefaultConfig();
             this.minecraft.setScreen(lastScreen);
@@ -45,21 +48,20 @@ public class ChunkByChunkConfigScreen extends Screen {
     @Override
     public void onClose() {
         ConfigUtil.loadDefaultConfig();
-        super.onClose();
         this.minecraft.setScreen(lastScreen);
     }
 
     @Override
-    public void tick() {
-        settingsList.tick();
+    public void render(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
+        this.renderBackground(graphics, mouseX, mouseY, delta);
+
+        super.render(graphics, mouseX, mouseY, delta);
+
+        graphics.drawCenteredString(font, title, width / 2, 8, 0xFFFFFF);
     }
 
     @Override
-    public void render(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
-        super.render(graphics, mouseX, mouseY, delta);
-
-        int titleWidth = font.width(title);
-        int titleX = (width - titleWidth) / 2;
-        graphics.drawString(font, title, titleX, 8, 0xFFFFFF, true);
+    public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
+        super.renderBackground(graphics, mouseX, mouseY, delta);
     }
 }

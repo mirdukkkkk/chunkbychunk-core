@@ -1,52 +1,42 @@
 package xyz.immortius.chunkbychunk.forge;
 
-import com.mojang.serialization.Codec;
-import net.minecraft.client.gui.screens.MenuScreens;
+import com.mojang.serialization.MapCodec;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.network.protocol.configuration.ServerConfigurationPacketListener;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.flag.FeatureFlags;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.*;
+import net.minecraft.world.item.CreativeModeTabs;
+import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
+import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
-
 import net.minecraft.world.level.chunk.ChunkGenerator;
-import net.neoforged.bus.api.Event;
 import net.neoforged.bus.api.IEventBus;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.LogicalSide;
 import net.neoforged.fml.common.Mod;
-import net.neoforged.fml.event.IModBusEvent;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
-import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.AddReloadListenerEvent;
-import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
-import net.neoforged.neoforge.event.TickEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
-import net.neoforged.neoforge.network.*;
+import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.neoforged.neoforge.network.configuration.ICustomConfigurationTask;
-import net.neoforged.neoforge.network.event.OnGameConfigurationEvent;
-import net.neoforged.neoforge.network.event.RegisterPayloadHandlerEvent;
-import net.neoforged.neoforge.network.registration.IPayloadRegistrar;
+import net.minecraft.network.codec.StreamCodec;
+import io.netty.buffer.ByteBuf;
+import net.minecraft.network.codec.ByteBufCodecs;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
-import net.neoforged.neoforge.registries.NeoForgeRegistries;
 import xyz.immortius.chunkbychunk.client.screens.BedrockChestScreen;
 import xyz.immortius.chunkbychunk.client.screens.WorldForgeScreen;
 import xyz.immortius.chunkbychunk.client.screens.WorldMenderScreen;
@@ -71,7 +61,6 @@ import xyz.immortius.chunkbychunk.server.world.SkyChunkGenerator;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -85,7 +74,7 @@ public class ChunkByChunkMod {
     private static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITIES = DeferredRegister.create(BuiltInRegistries.BLOCK_ENTITY_TYPE, ChunkByChunkConstants.MOD_ID);
     private static final DeferredRegister<MenuType<?>> CONTAINERS = DeferredRegister.create(BuiltInRegistries.MENU, ChunkByChunkConstants.MOD_ID);
     private static final DeferredRegister<SoundEvent> SOUNDS = DeferredRegister.create(BuiltInRegistries.SOUND_EVENT, ChunkByChunkConstants.MOD_ID);
-    private static final DeferredRegister<Codec<? extends ChunkGenerator>> CHUNK_GENERATORS = DeferredRegister.create(BuiltInRegistries.CHUNK_GENERATOR, ChunkByChunkConstants.MOD_ID);
+    private static final DeferredRegister<MapCodec<? extends ChunkGenerator>> CHUNK_GENERATORS = DeferredRegister.create(BuiltInRegistries.CHUNK_GENERATOR, ChunkByChunkConstants.MOD_ID);
 
     public static final DeferredHolder<Block, SpawnChunkBlock> SPAWN_CHUNK_BLOCK = BLOCKS.register("chunkspawner", () -> new SpawnChunkBlock("", false, BlockBehaviour.Properties.ofFullCopy(Blocks.STONE)));
     public static final DeferredHolder<Block, SpawnChunkBlock> UNSTABLE_SPAWN_CHUNK_BLOCK = BLOCKS.register("unstablechunkspawner", () -> new SpawnChunkBlock("", true, BlockBehaviour.Properties.ofFullCopy(Blocks.STONE)));
@@ -117,10 +106,10 @@ public class ChunkByChunkMod {
     public static final DeferredHolder<MenuType<?>, MenuType<WorldScannerMenu>> WORLD_SCANNER_MENU = CONTAINERS.register("worldscannermenu", () -> new MenuType<>(WorldScannerMenu::new, FeatureFlags.DEFAULT_FLAGS));
     public static final DeferredHolder<MenuType<?>, MenuType<WorldMenderMenu>> WORLD_MENDER_MENU = CONTAINERS.register("worldmendermenu", () -> new MenuType<>(WorldMenderMenu::new, FeatureFlags.DEFAULT_FLAGS));
 
-    public static final DeferredHolder<SoundEvent, SoundEvent> SPAWN_CHUNK_SOUND_EVENT = SOUNDS.register("spawnchunkevent", () -> SoundEvent.createVariableRangeEvent(new ResourceLocation(ChunkByChunkConstants.MOD_ID, "chunk_spawn_sound")));
+    public static final DeferredHolder<SoundEvent, SoundEvent> SPAWN_CHUNK_SOUND_EVENT = SOUNDS.register("spawnchunkevent", () -> SoundEvent.createVariableRangeEvent(ResourceLocation.fromNamespaceAndPath(ChunkByChunkConstants.MOD_ID, "chunk_spawn_sound")));
 
-    public static final DeferredHolder<Codec<? extends ChunkGenerator>, Codec<? extends SkyChunkGenerator>> SKY_CHUNK_GENERATOR = CHUNK_GENERATORS.register("skychunkgenerator", () -> SkyChunkGenerator.CODEC);
-    public static final DeferredHolder<Codec<? extends ChunkGenerator>, Codec<? extends SkyChunkGenerator>> OLD_NETHER_CHUNK_GENERATOR = CHUNK_GENERATORS.register("netherchunkgenerator", () -> SkyChunkGenerator.OLD_NETHER_CODEC);
+    public static final DeferredHolder<MapCodec<? extends ChunkGenerator>, MapCodec<? extends SkyChunkGenerator>> SKY_CHUNK_GENERATOR = CHUNK_GENERATORS.register("skychunkgenerator", () -> SkyChunkGenerator.CODEC);
+    public static final DeferredHolder<MapCodec<? extends ChunkGenerator>, MapCodec<? extends SkyChunkGenerator>> OLD_NETHER_CHUNK_GENERATOR = CHUNK_GENERATORS.register("netherchunkgenerator", () -> SkyChunkGenerator.OLD_NETHER_CODEC);
 
     public static final List<Supplier<ItemStack>> THEMED_SPAWN_CHUNK_ITEMS = new ArrayList<>();
 
@@ -147,8 +136,8 @@ public class ChunkByChunkMod {
 
         eventBus.addListener(this::updateCreativeTabs);
         eventBus.addListener(this::clientSetup);
-        eventBus.addListener(this::onGameConfiguration);
-        eventBus.addListener(this::registerPayloadHandler);
+        eventBus.addListener(this::registerMenuScreens);
+        eventBus.addListener(this::registerPayloadHandlers);
         NeoForge.EVENT_BUS.addListener(this::registerResourceReloadListeners);
         NeoForge.EVENT_BUS.addListener(this::registerCommands);
         NeoForge.EVENT_BUS.addListener(this::onPlaceItem);
@@ -157,45 +146,46 @@ public class ChunkByChunkMod {
         NeoForge.EVENT_BUS.addListener(this::onServerTick);
     }
 
-    public void onGameConfiguration(final OnGameConfigurationEvent event) {
-        event.register(new ConfigurationTask(event.getListener()));
-    }
-
     private void clientSetup(final FMLClientSetupEvent event) {
         event.enqueueWork(() -> {
             ChunkByChunkClientMod.registerConfigScreen();
-            MenuScreens.register(BEDROCK_CHEST_MENU.get(), BedrockChestScreen::new);
-            MenuScreens.register(WORLD_FORGE_MENU.get(), WorldForgeScreen::new);
-            MenuScreens.register(WORLD_SCANNER_MENU.get(), WorldScannerScreen::new);
-            MenuScreens.register(WORLD_MENDER_MENU.get(), WorldMenderScreen::new);
         });
     }
 
-    public void updateCreativeTabs(BuildCreativeModeTabContentsEvent e) {
-        if (e.getTab().getType() == CreativeModeTab.Type.CATEGORY && e.getTabKey().equals(CreativeModeTabs.TOOLS_AND_UTILITIES)) {
-            e.getEntries().put(WORLD_FRAGMENT_ITEM.get().getDefaultInstance(), CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS);
-            e.getEntries().put(WORLD_SHARD_ITEM.get().getDefaultInstance(), CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS);
-            e.getEntries().put(WORLD_CRYSTAL_ITEM.get().getDefaultInstance(), CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS);
-            e.getEntries().put(WORLD_CORE_BLOCK_ITEM.get().getDefaultInstance(), CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS);
-            e.getEntries().put(WORLD_FORGE_BLOCK_ITEM.get().getDefaultInstance(), CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS);
-            e.getEntries().put(WORLD_SCANNER_BLOCK_ITEM.get().getDefaultInstance(), CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS);
-            e.getEntries().put(WORLD_MENDER_BLOCK_ITEM.get().getDefaultInstance(), CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS);
-            e.getEntries().put(SPAWN_CHUNK_BLOCK_ITEM.get().getDefaultInstance(), CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS);
-            e.getEntries().put(UNSTABLE_SPAWN_CHUNK_BLOCK_ITEM.get().getDefaultInstance(), CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS);
-            for (Supplier<ItemStack> biomeThemeSpawner : THEMED_SPAWN_CHUNK_ITEMS) {
-                e.getEntries().put(biomeThemeSpawner.get(), CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS);
-            }
-        }
+    public void registerMenuScreens(final RegisterMenuScreensEvent event) {
+        event.register(BEDROCK_CHEST_MENU.get(), BedrockChestScreen::new);
+        event.register(WORLD_FORGE_MENU.get(), WorldForgeScreen::new);
+        event.register(WORLD_SCANNER_MENU.get(), WorldScannerScreen::new);
+        event.register(WORLD_MENDER_MENU.get(), WorldMenderScreen::new);
     }
 
-    public void registerPayloadHandler(final RegisterPayloadHandlerEvent event) {
-        final IPayloadRegistrar registrar = event.registrar(ChunkByChunkConstants.MOD_ID).versioned(PROTOCOL_VERSION);
-        registrar.configuration(ConfigMessage.ID, ConfigMessage::new, handler -> handler
-                        .client((payload, context) -> {
-                            ChunkByChunkConfig.get().getGameplayConfig().setBlockPlacementAllowedOutsideSpawnedChunks(payload.blockPlacementAllowed);
-                        })
-                );
+    public void registerPayloadHandlers(final net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent event) {
+        final net.neoforged.neoforge.network.registration.PayloadRegistrar registrar = event.registrar(PROTOCOL_VERSION);
+
+        registrar.configurationToClient(
+                ConfigMessage.TYPE,
+                ConfigMessage.STREAM_CODEC,
+                (payload, context) -> {
+                }
+        );
     }
+
+     public void updateCreativeTabs(BuildCreativeModeTabContentsEvent e) {
+         if (e.getTabKey().equals(CreativeModeTabs.TOOLS_AND_UTILITIES)) {
+             e.accept(WORLD_FRAGMENT_ITEM.get().getDefaultInstance(), CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS);
+             e.accept(WORLD_SHARD_ITEM.get().getDefaultInstance(), CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS);
+             e.accept(WORLD_CRYSTAL_ITEM.get().getDefaultInstance(), CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS);
+             e.accept(WORLD_CORE_BLOCK_ITEM.get().getDefaultInstance(), CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS);
+             e.accept(WORLD_FORGE_BLOCK_ITEM.get().getDefaultInstance(), CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS);
+             e.accept(WORLD_SCANNER_BLOCK_ITEM.get().getDefaultInstance(), CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS);
+             e.accept(WORLD_MENDER_BLOCK_ITEM.get().getDefaultInstance(), CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS);
+             e.accept(SPAWN_CHUNK_BLOCK_ITEM.get().getDefaultInstance(), CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS);
+             e.accept(UNSTABLE_SPAWN_CHUNK_BLOCK_ITEM.get().getDefaultInstance(), CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS);
+             for (Supplier<ItemStack> biomeThemeSpawner : THEMED_SPAWN_CHUNK_ITEMS) {
+                 e.accept(biomeThemeSpawner.get(), CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS);
+             }
+         }
+     }
 
     public void registerResourceReloadListeners(AddReloadListenerEvent e) {
         ChunkByChunkConstants.LOGGER.info("Registering resource reload listeners");
@@ -221,7 +211,7 @@ public class ChunkByChunkMod {
         BlockPos pos = event.getPos();
         BlockPos placePos = pos.relative(event.getFace());
         if (!CommonEventHandler.isBlockPlacementAllowed(placePos, event.getEntity(), event.getLevel())) {
-            event.setUseItem(Event.Result.DENY);
+            event.setCanceled(true);
         }
     }
 
@@ -233,33 +223,27 @@ public class ChunkByChunkMod {
         ServerEventHandler.onServerStarting(event.getServer());
     }
 
-    public void onServerTick(TickEvent.ServerTickEvent tickEvent) {
-        if (tickEvent.side == LogicalSide.SERVER) {
-            ServerEventHandler.onLevelTick(tickEvent.getServer());
-        }
+    public void onServerTick(net.neoforged.neoforge.event.tick.ServerTickEvent.Post tickEvent) {
+        ServerEventHandler.onLevelTick(tickEvent.getServer());
     }
 
     private record ConfigMessage(boolean blockPlacementAllowed) implements CustomPacketPayload {
-
-        public static final ResourceLocation ID = new ResourceLocation(ChunkByChunkConstants.MOD_ID, "configchannel");
-
-        ConfigMessage(final FriendlyByteBuf buffer) {
-            this(buffer.readBoolean());
-        }
+        public static final Type<ConfigMessage> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(ChunkByChunkConstants.MOD_ID, "config_channel"));
 
         @Override
-        public void write(FriendlyByteBuf buffer) {
-            buffer.writeBoolean(blockPlacementAllowed);
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
         }
 
-        @Override
-        public ResourceLocation id() {
-            return ID;
-        }
+        public static final StreamCodec<ByteBuf, ConfigMessage> STREAM_CODEC = StreamCodec.composite(
+                ByteBufCodecs.BOOL,
+                ConfigMessage::blockPlacementAllowed,
+                ConfigMessage::new
+        );
     }
 
     public record ConfigurationTask(ServerConfigurationPacketListener listener) implements ICustomConfigurationTask {
-        public static final ConfigurationTask.Type TYPE = new ConfigurationTask.Type(new ResourceLocation(ChunkByChunkConstants.MOD_ID + ":configure"));
+        public static final ConfigurationTask.Type TYPE = new ConfigurationTask.Type(ResourceLocation.fromNamespaceAndPath(ChunkByChunkConstants.MOD_ID, "configure"));
 
         @Override
         public void run(Consumer<CustomPacketPayload> sender) {

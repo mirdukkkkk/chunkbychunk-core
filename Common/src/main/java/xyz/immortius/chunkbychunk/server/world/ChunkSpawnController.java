@@ -1,9 +1,9 @@
 package xyz.immortius.chunkbychunk.server.world;
 
-import com.mojang.datafixers.util.Either;
 import io.netty.buffer.Unpooled;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -11,7 +11,7 @@ import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.level.ChunkHolder;
+import net.minecraft.server.level.ChunkResult;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.datafix.DataFixTypes;
 import net.minecraft.world.entity.Entity;
@@ -22,16 +22,15 @@ import net.minecraft.world.level.block.*;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
-import net.minecraft.world.level.chunk.ChunkStatus;
+import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.dimension.DimensionType;
-import net.minecraft.world.level.portal.PortalInfo;
 import net.minecraft.world.level.saveddata.SavedData;
+import net.minecraft.world.level.portal.DimensionTransition;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import xyz.immortius.chunkbychunk.common.ChunkByChunkConstants;
-import xyz.immortius.chunkbychunk.common.util.ChangeDimensionHelper;
 import xyz.immortius.chunkbychunk.config.ChunkByChunkConfig;
 
 import javax.annotation.Nullable;
@@ -41,29 +40,30 @@ import java.util.concurrent.CompletableFuture;
 public class ChunkSpawnController extends SavedData {
 
     private final MinecraftServer server;
-
     private final Deque<SpawnRequest> requests = new ArrayDeque<>();
 
-    @Nullable
-    private SpawnRequest currentSpawnRequest = null;
-
-    @Nullable
-    private SpawnPhase phase;
+    @Nullable private SpawnRequest currentSpawnRequest = null;
+    @Nullable private SpawnPhase phase;
     private boolean forcedTargetChunk;
     private int currentLayer;
 
-    @Nullable
-    private transient ServerLevel sourceLevel;
-    @Nullable
-    private transient ServerLevel targetLevel;
-    @Nullable
-    private transient CompletableFuture<Either<ChunkAccess, ChunkHolder.ChunkLoadingFailure>> sourceChunkFuture;
+    @Nullable private transient ServerLevel sourceLevel;
+    @Nullable private transient ServerLevel targetLevel;
+    // В 1.21.1 используем ChunkResult
+    private transient CompletableFuture<ChunkResult<ChunkAccess>> sourceChunkFuture;
 
     public static ChunkSpawnController get(MinecraftServer server) {
-        return server.getLevel(Level.OVERWORLD).getChunkSource().getDataStorage().computeIfAbsent(new Factory<>(() -> new ChunkSpawnController(server), (tag) -> ChunkSpawnController.load(server, tag), DataFixTypes.LEVEL), "chunkspawncontroller");
+        return server.getLevel(Level.OVERWORLD).getChunkSource().getDataStorage().computeIfAbsent(
+                new Factory<>(
+                        () -> new ChunkSpawnController(server),
+                        (tag, provider) -> ChunkSpawnController.load(server, tag, provider),
+                        DataFixTypes.LEVEL
+                ),
+                "chunkspawncontroller"
+        );
     }
 
-    private static ChunkSpawnController load(MinecraftServer server, CompoundTag tag) {
+    private static ChunkSpawnController load(MinecraftServer server, CompoundTag tag, HolderLookup.Provider provider) {
         ChunkSpawnController chunkSpawnController = new ChunkSpawnController(server);
         chunkSpawnController.loadInternal(tag);
         return chunkSpawnController;
@@ -88,7 +88,7 @@ public class ChunkSpawnController extends SavedData {
     }
 
     @Override
-    public CompoundTag save(CompoundTag tag) {
+    public CompoundTag save(CompoundTag tag, HolderLookup.Provider provider) {
         ListTag requestsTag = new ListTag();
         for (SpawnRequest request : requests) {
             requestsTag.add(request.save());
@@ -114,25 +114,22 @@ public class ChunkSpawnController extends SavedData {
             }
             switch (phase) {
                 case COPY_BIOMES -> {
-                    updateBiomes(sourceLevel,
-                            sourceChunkFuture.getNow(Either.right(ChunkHolder.ChunkLoadingFailure.UNLOADED)).orThrow(),
-                            targetLevel,
-                            targetLevel.getChunk(currentSpawnRequest.targetChunkPos.x, currentSpawnRequest.targetChunkPos.z),
-                            currentSpawnRequest.targetChunkPos);
-                    phase = SpawnPhase.SPAWN_BLOCKS;
-                    currentLayer = targetLevel.getMinBuildHeight();
-                    setDirty();
+                    ChunkAccess sourceChunk = sourceChunkFuture.getNow(ChunkResult.error(() -> "Chunk unloaded")).orElse(null);
+                    if (sourceChunk != null) {
+                        updateBiomes(sourceLevel,
+                                sourceChunk,
+                                targetLevel,
+                                targetLevel.getChunk(currentSpawnRequest.targetChunkPos.x, currentSpawnRequest.targetChunkPos.z),
+                                currentSpawnRequest.targetChunkPos);
+                        phase = SpawnPhase.SPAWN_BLOCKS;
+                        currentLayer = targetLevel.getMinBuildHeight();
+                        setDirty();
+                    }
                 }
                 case SPAWN_BLOCKS -> {
                     int minLayer = currentLayer;
                     int maxLayer = Math.min(currentLayer + ChunkByChunkConfig.get().getGeneration().getChunkLayerSpawnRate(), targetLevel.getMaxBuildHeight() + 1);
-                    copyBlocks(
-                            sourceLevel,
-                            currentSpawnRequest.sourceChunkPos,
-                            targetLevel,
-                            currentSpawnRequest.targetChunkPos,
-                            minLayer,
-                            maxLayer);
+                    copyBlocks(sourceLevel, currentSpawnRequest.sourceChunkPos, targetLevel, currentSpawnRequest.targetChunkPos, minLayer, maxLayer);
                     if (maxLayer > targetLevel.getMaxBuildHeight()) {
                         if (ChunkByChunkConfig.get().getGeneration().spawnNewChunkChest() && !ChunkByChunkConfig.get().getGeneration().spawnChestInInitialChunkOnly()) {
                             SpawnChunkHelper.createNextSpawner(targetLevel, currentSpawnRequest.targetChunkPos);
@@ -164,12 +161,8 @@ public class ChunkSpawnController extends SavedData {
             sourceLevel.setChunkForced(currentSpawnRequest.sourceChunkPos().x, currentSpawnRequest.sourceChunkPos().z, true);
             sourceChunkFuture = sourceLevel.getChunkSource().getChunkFuture(currentSpawnRequest.sourceChunkPos().x, currentSpawnRequest.sourceChunkPos().z, ChunkStatus.FULL, true);
 
-            if (currentSpawnRequest.immediate) {
-                phase = SpawnPhase.SYNCH_CHUNKS;
-            } else {
-                phase = SpawnPhase.COPY_BIOMES;
-            }
-            ChunkByChunkConstants.LOGGER.info("Spawning chunk " + currentSpawnRequest.targetChunkPos.toString() + " in " + targetLevel.dimensionTypeId().toString());
+            phase = currentSpawnRequest.immediate ? SpawnPhase.SYNCH_CHUNKS : SpawnPhase.COPY_BIOMES;
+            ChunkByChunkConstants.LOGGER.info("Spawning chunk {} in {}", currentSpawnRequest.targetChunkPos, targetLevel.dimension().location());
             setDirty();
         }
     }
@@ -179,7 +172,16 @@ public class ChunkSpawnController extends SavedData {
         for (Entity e : entities) {
             Vec3 pos = new Vec3(e.getX() + (currentSpawnRequest.targetChunkPos().x - currentSpawnRequest.sourceChunkPos().x) * 16, e.getY(), e.getZ() + (currentSpawnRequest.targetChunkPos().z - currentSpawnRequest.sourceChunkPos().z) * 16);
 
-            Entity movedEntity = ChangeDimensionHelper.changeDimension(e, targetLevel, new PortalInfo(pos, Vec3.ZERO, e.xRotO, e.yRotO));
+            DimensionTransition transition = new DimensionTransition(
+                    targetLevel,
+                    pos,
+                    e.getDeltaMovement(),
+                    e.getYRot(),
+                    e.getXRot(),
+                    DimensionTransition.DO_NOTHING
+            );
+
+            Entity movedEntity = e.changeDimension(transition);
             if (movedEntity != null) {
                 movedEntity.setPos(pos);
             }
@@ -210,7 +212,8 @@ public class ChunkSpawnController extends SavedData {
                 for (int x = sourceChunkPos.getMinBlockX(); x <= sourceChunkPos.getMaxBlockX(); x++) {
                     sourceBlock.set(x, y, z);
                     targetBlock.set(x + xOffset, y, z + zOffset);
-                    Block existingBlock = targetLevel.getBlockState(targetBlock).getBlock();
+                    BlockState existingState = targetLevel.getBlockState(targetBlock);
+                    Block existingBlock = existingState.getBlock();
                     if (existingBlock instanceof AirBlock || existingBlock instanceof LiquidBlock || existingBlock == Blocks.BEDROCK || existingBlock == sealedBlock || existingBlock == Blocks.SNOW) {
                         BlockState newBlock = sourceLevel.getBlockState(sourceBlock);
                         if (ChunkByChunkConfig.get().getGameplayConfig().isChunkSpawnLeafDecayDisabled() && newBlock.getBlock() instanceof LeavesBlock) {
@@ -218,10 +221,9 @@ public class ChunkSpawnController extends SavedData {
                         }
                         targetLevel.setBlock(targetBlock, newBlock, Block.UPDATE_ALL);
                         BlockEntity fromBlockEntity = sourceLevel.getBlockEntity(sourceBlock);
-                        BlockEntity toBlockEntity = targetLevel.getBlockEntity(targetBlock);
+                        BlockEntity toBlockEntity = targetLevel.getChunkAt(targetBlock).getBlockEntity(targetBlock);
                         if (fromBlockEntity != null && toBlockEntity != null) {
-                            toBlockEntity.load(fromBlockEntity.saveWithFullMetadata());
-                            targetLevel.setBlockEntity(toBlockEntity);
+                            toBlockEntity.loadWithComponents(fromBlockEntity.saveWithFullMetadata(targetLevel.registryAccess()), targetLevel.registryAccess());
                         }
                     }
                 }
@@ -238,16 +240,14 @@ public class ChunkSpawnController extends SavedData {
         for (int targetIndex = 0; targetIndex < targetChunk.getSections().length; targetIndex++) {
             int sourceIndex = (targetIndex < sourceChunk.getSections().length) ? targetIndex : sourceChunk.getSections().length - 1;
             if (sourceChunk.getSections()[sourceIndex].getBiomes() instanceof PalettedContainer<Holder<Biome>> sourceBiomes && targetChunk.getSections()[targetIndex].getBiomes() instanceof PalettedContainer<Holder<Biome>> targetBiomes) {
-                byte[] buffer = new byte[sourceBiomes.getSerializedSize()];
 
-                FriendlyByteBuf friendlyByteBuf = new FriendlyByteBuf(Unpooled.wrappedBuffer(buffer));
-                friendlyByteBuf.writerIndex(0);
+                FriendlyByteBuf friendlyByteBuf = new FriendlyByteBuf(Unpooled.buffer());
                 sourceBiomes.write(friendlyByteBuf);
+                byte[] buffer = friendlyByteBuf.array();
 
-                byte[] targetBuffer = new byte[targetBiomes.getSerializedSize()];
-                FriendlyByteBuf targetFriendlyByteBuf = new FriendlyByteBuf(Unpooled.wrappedBuffer(targetBuffer));
-                targetFriendlyByteBuf.writerIndex(0);
+                FriendlyByteBuf targetFriendlyByteBuf = new FriendlyByteBuf(Unpooled.buffer());
                 targetBiomes.write(targetFriendlyByteBuf);
+                byte[] targetBuffer = targetFriendlyByteBuf.array();
 
                 if (!Arrays.equals(buffer, targetBuffer)) {
                     friendlyByteBuf.readerIndex(0);
@@ -266,7 +266,7 @@ public class ChunkSpawnController extends SavedData {
         if (targetLevel.getChunkSource().getGenerator() instanceof SkyChunkGenerator generator) {
             for (ResourceKey<Level> synchLevelId : generator.getSynchedLevels()) {
                 ServerLevel synchLevel = server.getLevel(synchLevelId);
-                if (synchLevel.getChunkSource().getGenerator() instanceof SkyChunkGenerator synchGenerator) {
+                if (synchLevel != null && synchLevel.getChunkSource().getGenerator() instanceof SkyChunkGenerator synchGenerator) {
                     double scale = DimensionType.getTeleportationScale(targetLevel.dimensionType(), synchLevel.dimensionType());
                     BlockPos pos = currentSpawnRequest.targetChunkPos().getMiddleBlockPosition(0);
                     ChunkPos synchChunk = new ChunkPos(BlockPos.containing(pos.getX() * scale, 0, pos.getZ() * scale));
@@ -320,11 +320,13 @@ public class ChunkSpawnController extends SavedData {
             if (immediate) {
                 ServerLevel toLevel = server.getLevel(targetLevel);
                 ServerLevel fromLevel = server.getLevel(sourceLevel);
-                LevelChunk toChunk = toLevel.getChunk(targetChunkPos.x, targetChunkPos.z);
-                LevelChunk fromChunk = fromLevel.getChunk(sourceChunkPos.x, sourceChunkPos.z);
-                updateBiomes(fromLevel, fromChunk, toLevel, toChunk, targetChunkPos);
-                copyBlocks(fromLevel, spawnRequest.sourceChunkPos, toLevel, spawnRequest.targetChunkPos, toLevel.getMinBuildHeight(), toLevel.getMaxBuildHeight() + 1);
-                requests.addFirst(spawnRequest);
+                if (toLevel != null && fromLevel != null) {
+                    LevelChunk toChunk = toLevel.getChunk(targetChunkPos.x, targetChunkPos.z);
+                    LevelChunk fromChunk = fromLevel.getChunk(sourceChunkPos.x, sourceChunkPos.z);
+                    updateBiomes(fromLevel, fromChunk, toLevel, toChunk, targetChunkPos);
+                    copyBlocks(fromLevel, spawnRequest.sourceChunkPos, toLevel, spawnRequest.targetChunkPos, toLevel.getMinBuildHeight(), toLevel.getMaxBuildHeight() + 1);
+                    requests.addFirst(spawnRequest);
+                }
             } else {
                 requests.add(spawnRequest);
             }
@@ -339,7 +341,6 @@ public class ChunkSpawnController extends SavedData {
     }
 
     private record SpawnRequest(ChunkPos targetChunkPos, ResourceKey<Level> targetLevel, ChunkPos sourceChunkPos, ResourceKey<Level> sourceLevel, boolean immediate) {
-
         public static final String TARGET_POS = "targetPos";
         public static final String TARGET_LEVEL = "targetLevel";
         public static final String SOURCE_POS = "sourcePos";
@@ -348,27 +349,11 @@ public class ChunkSpawnController extends SavedData {
 
         public static SpawnRequest load(CompoundTag tag) {
             ChunkPos targetPos = new ChunkPos(tag.getLong(TARGET_POS));
-            ResourceKey<Level> targetLevel = ResourceKey.create(Registries.DIMENSION, new ResourceLocation(tag.getString(TARGET_LEVEL)));
+            ResourceKey<Level> targetLevel = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(tag.getString(TARGET_LEVEL)));
             ChunkPos sourcePos = new ChunkPos(tag.getLong(SOURCE_POS));
-            ResourceKey<Level> sourceLevel = ResourceKey.create(Registries.DIMENSION, new ResourceLocation(tag.getString(SOURCE_LEVEL)));
+            ResourceKey<Level> sourceLevel = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(tag.getString(SOURCE_LEVEL)));
             boolean immediate = tag.getBoolean(IMMEDIATE);
             return new SpawnRequest(targetPos, targetLevel, sourcePos, sourceLevel, immediate);
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-
-            SpawnRequest that = (SpawnRequest) o;
-
-            if (!targetChunkPos.equals(that.targetChunkPos)) return false;
-            return targetLevel.equals(that.targetLevel);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(targetChunkPos, targetLevel);
         }
 
         public CompoundTag save() {
@@ -383,9 +368,6 @@ public class ChunkSpawnController extends SavedData {
     }
 
     private enum SpawnPhase {
-        COPY_BIOMES,
-        SPAWN_BLOCKS,
-        SYNCH_CHUNKS,
-        SPAWN_ENTITIES
+        COPY_BIOMES, SPAWN_BLOCKS, SYNCH_CHUNKS, SPAWN_ENTITIES
     }
 }

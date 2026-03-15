@@ -10,11 +10,8 @@ import xyz.immortius.chunkbychunk.common.ChunkByChunkConstants;
 import xyz.immortius.chunkbychunk.common.menus.WorldMenderMenu;
 import xyz.immortius.chunkbychunk.common.util.SpiralIterator;
 
-/**
- * Screen for the WorldMender.
- */
 public class WorldMenderScreen extends AbstractContainerScreen<WorldMenderMenu> {
-    public static final ResourceLocation CONTAINER_TEXTURE = new ResourceLocation(ChunkByChunkConstants.MOD_ID + ":textures/gui/container/worldmender.png");
+    public static final ResourceLocation CONTAINER_TEXTURE = ResourceLocation.fromNamespaceAndPath(ChunkByChunkConstants.MOD_ID, "textures/gui/container/worldmender.png");
 
     private static final int MAIN_TEXTURE_DIM = 512;
     private static final float TICKS_PER_FRAME = 4f;
@@ -49,7 +46,6 @@ public class WorldMenderScreen extends AbstractContainerScreen<WorldMenderMenu> 
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
-        this.renderBackground(graphics, mouseX, mouseY, delta);
         super.render(graphics, mouseX, mouseY, delta);
         this.renderTooltip(graphics, mouseX, mouseY);
     }
@@ -74,7 +70,6 @@ public class WorldMenderScreen extends AbstractContainerScreen<WorldMenderMenu> 
 
         int frame = Mth.floor(animCounter / TICKS_PER_FRAME);
 
-
         int highlightOffsetX = imageWidth + (frame / 4) * HIGHLIGHT_SIZE;
         int highlightOffsetY = HIGHLIGHT_SIZE * (frame % 4);
 
@@ -88,8 +83,12 @@ public class WorldMenderScreen extends AbstractContainerScreen<WorldMenderMenu> 
         }
     }
 
-    private Pos getChunkPos(int chunkX, int chunkZ) {
+    @Override
+    public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
+        super.renderBackground(graphics, mouseX, mouseY, delta);
+    }
 
+    private Pos getChunkPos(int chunkX, int chunkZ) {
         int absX = Mth.abs(chunkX);
         int absY = Mth.abs(chunkZ);
         int sigX = Mth.sign(chunkX);
@@ -109,5 +108,4 @@ public class WorldMenderScreen extends AbstractContainerScreen<WorldMenderMenu> 
 
     private record Pos(int x, int y) {
     }
-
 }

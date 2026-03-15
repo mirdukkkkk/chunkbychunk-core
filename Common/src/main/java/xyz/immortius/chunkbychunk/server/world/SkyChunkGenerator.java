@@ -24,24 +24,26 @@ import net.minecraft.world.level.levelgen.*;
 import net.minecraft.world.level.levelgen.blending.Blender;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplateManager;
+import com.mojang.serialization.MapCodec;
 
 import javax.annotation.Nullable;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.lang.reflect.Field;
 
 /**
  * The Sky Chunk Generator - Sky Chunk Generators wrap a parent generator but disable actual generation. The
  * parent generator is retained for biome information and similar. Each sky chunk generator also has a reference
  * to the dimension that generates chunks for this dimension
  */
-public class SkyChunkGenerator extends NoiseBasedChunkGenerator {
+public class SkyChunkGenerator extends ChunkGenerator {
 
-    public static final Codec<? extends SkyChunkGenerator> CODEC = RecordCodecBuilder.create((encoded) ->
+    public static final MapCodec<? extends SkyChunkGenerator> CODEC = RecordCodecBuilder.mapCodec((encoded) ->
             encoded.group(ChunkGenerator.CODEC.withLifecycle(Lifecycle.stable()).fieldOf("parent").forGetter(SkyChunkGenerator::getParent))
                     .apply(encoded, encoded.stable(SkyChunkGenerator::new))
     );
-    public static final Codec<? extends SkyChunkGenerator> OLD_NETHER_CODEC = RecordCodecBuilder.create((encoded) ->
+    public static final MapCodec<? extends SkyChunkGenerator> OLD_NETHER_CODEC = RecordCodecBuilder.mapCodec((encoded) ->
             encoded.group(ChunkGenerator.CODEC.withLifecycle(Lifecycle.stable()).fieldOf("parent").forGetter(SkyChunkGenerator::getParent))
                     .apply(encoded, encoded.stable(SkyChunkGenerator::new))
     );
@@ -85,7 +87,7 @@ public class SkyChunkGenerator extends NoiseBasedChunkGenerator {
      * @param parent The chunkGenerator this generator is based on
      */
     public SkyChunkGenerator(ChunkGenerator parent) {
-        super(parent.getBiomeSource(), ChunkGeneratorAccess.getNoiseGeneratorSettings(parent));
+        super(parent.getBiomeSource(), parent::getBiomeGenerationSettings);
         this.parent = parent;
     }
 
@@ -156,14 +158,14 @@ public class SkyChunkGenerator extends NoiseBasedChunkGenerator {
     }
 
     @Override
-    protected Codec<? extends ChunkGenerator> codec() {
+    protected MapCodec<? extends ChunkGenerator> codec() {
         return CODEC;
     }
 
     @Override
-    public CompletableFuture<ChunkAccess> fillFromNoise(Executor executor, Blender blender, RandomState randomState, StructureManager structureManager, ChunkAccess chunk) {
+    public CompletableFuture<ChunkAccess> fillFromNoise(Blender blender, RandomState randomState, StructureManager structureManager, ChunkAccess chunk) {
         return switch (generationType) {
-            case Sealed -> parent.fillFromNoise(executor, blender, randomState, structureManager, chunk).whenCompleteAsync((chunkAccess, throwable) -> {
+            case Sealed -> parent.fillFromNoise(blender, randomState, structureManager, chunk).whenCompleteAsync((chunkAccess, throwable) -> {
 
                 BlockPos.MutableBlockPos blockPos = new BlockPos.MutableBlockPos(0, 0, 0);
                 for (blockPos.setZ(0); blockPos.getZ() < 16; blockPos.setZ(blockPos.getZ() + 1)) {
@@ -205,9 +207,9 @@ public class SkyChunkGenerator extends NoiseBasedChunkGenerator {
     }
 
     @Override
-    public CompletableFuture<ChunkAccess> createBiomes(Executor executor, RandomState randomState, Blender blender, StructureManager structureManager, ChunkAccess chunk) {
+    public CompletableFuture<ChunkAccess> createBiomes(RandomState randomState, Blender blender, StructureManager structureManager, ChunkAccess chunk) {
         if (unspawnedBiome == null) {
-            return parent.createBiomes(executor, randomState, blender, structureManager, chunk);
+            return parent.createBiomes(randomState, blender, structureManager, chunk);
         } else {
             return CompletableFuture.supplyAsync(Util.wrapThreadWithTaskName("init_biomes", () -> {
                 chunk.fillBiomesFromNoise((var1, var2, var3, var4) -> unspawnedBiome,
@@ -234,7 +236,6 @@ public class SkyChunkGenerator extends NoiseBasedChunkGenerator {
     public void buildSurface(WorldGenRegion worldGenRegion, StructureManager structureManager, RandomState randomState, ChunkAccess chunk) {
     }
 
-    @Override
     public void buildSurface(ChunkAccess access, WorldGenerationContext context, RandomState state, StructureManager structureManager, BiomeManager biomeManager, Registry<Biome> biomes, Blender blender) {
     }
 
@@ -311,9 +312,18 @@ public class SkyChunkGenerator extends NoiseBasedChunkGenerator {
      * @deprecated
      */
     @Deprecated
-    @Override
     public BiomeGenerationSettings getBiomeGenerationSettings(Holder<Biome> biome) {
         return parent.getBiomeGenerationSettings(biome);
+    }
+
+    private static Holder<NoiseGeneratorSettings> getGeneratorSettings(ChunkGenerator generator) {
+        try {
+            Field field = ChunkGenerator.class.getDeclaredField("generatorSettings");
+            field.setAccessible(true);
+            return (Holder<NoiseGeneratorSettings>) field.get(generator);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to get generatorSettings", e);
+        }
     }
 
 }

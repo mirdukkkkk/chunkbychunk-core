@@ -30,7 +30,7 @@ public class CBCJeiPlugin implements IModPlugin {
 
     @Override
     public ResourceLocation getPluginUid() {
-        return new ResourceLocation(ChunkByChunkConstants.MOD_ID, "jei");
+        return ResourceLocation.parse(ChunkByChunkConstants.MOD_ID + ":jei");
     }
 
     @Override

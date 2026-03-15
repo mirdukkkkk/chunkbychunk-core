@@ -19,18 +19,15 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-/**
- * A widget providing a scrollable list of configuration options for ChunkByChunk
- */
 public class SettingListWidget extends ContainerObjectSelectionList<SettingListWidget.SettingEntry> {
 
     private EditBox lastFocused = null;
-    private int rowWidth;
+    private final int rowWidth;
 
     public SettingListWidget(Minecraft minecraft, Screen parent, int width, int top, int bottom, int rowWidth) {
-        super(minecraft, width, parent.height - 64, 24, 22);
-
+        super(minecraft, width, bottom - top, top, 22);
         this.rowWidth = rowWidth;
+
         ConfigMetadata metadata = MetadataBuilder.build(ChunkByChunkConfig.class);
         ChunkByChunkConfig defaultConfig = new ChunkByChunkConfig();
 
@@ -40,41 +37,31 @@ public class SettingListWidget extends ContainerObjectSelectionList<SettingListW
             this.addEntry(new SectionTitleEntry(section.getDisplayName()));
             for (FieldMetadata<?> field : section.getFields().values()) {
                 if (field instanceof BooleanFieldMetadata boolField) {
-                    Boolean defaultValue = boolField.getValue(defaultSection);
-                    this.addEntry(new BooleanEntry(field.getDisplayName(),
-                            () -> boolField.getValue(configSection),
-                            (x) -> boolField.setValue(configSection, x), defaultValue));
+                    this.addEntry(new BooleanEntry(field.getDisplayName(), () -> boolField.getValue(configSection), (x) -> boolField.setValue(configSection, x), boolField.getValue(defaultSection)));
                 } else if (field instanceof EnumFieldMetadata enumField) {
-                    Enum<?> defaultValue = enumField.getValue(defaultSection);
-                    this.addEntry(new EnumEntry(enumField.getDisplayName(), enumField.enumType(),
-                            () -> enumField.getValue(configSection),
-                            (x) -> enumField.setValue(configSection, x), defaultValue));
+                    this.addEntry(new EnumEntry(enumField.getDisplayName(), enumField.enumType(), () -> enumField.getValue(configSection), (x) -> enumField.setValue(configSection, x), enumField.getValue(defaultSection)));
                 } else if (field instanceof IntFieldMetadata intField) {
                     Integer defaultValue = intField.getValue(defaultSection);
                     if (intField.getMaxValue() - intField.getMinValue() > 256) {
-                        this.addEntry(new ExtendedIntegerEntry(field.getDisplayName(), intField.getMinValue(), intField.getMaxValue(),
-                                () -> intField.getValue(configSection),
-                                (x) -> intField.setValue(configSection, x), defaultValue));
+                        this.addEntry(new ExtendedIntegerEntry(field.getDisplayName(), intField.getMinValue(), intField.getMaxValue(), () -> intField.getValue(configSection), (x) -> intField.setValue(configSection, x), defaultValue));
                     } else {
-                        this.addEntry(new IntegerEntry(field.getDisplayName(), intField.getMinValue(), intField.getMaxValue(),
-                                () -> intField.getValue(configSection),
-                                (x) -> intField.setValue(configSection, x), defaultValue));
+                        this.addEntry(new IntegerEntry(field.getDisplayName(), intField.getMinValue(), intField.getMaxValue(), () -> intField.getValue(configSection), (x) -> intField.setValue(configSection, x), defaultValue));
                     }
                 } else if (field instanceof StringFieldMetadata stringField) {
-                   this.addEntry(new StringEntry(field.getDisplayName(), () -> stringField.getValue(configSection), (x) -> stringField.setValue(configSection, x), stringField.getValue(defaultSection)));
-                } else {
-                    ChunkByChunkConstants.LOGGER.info("Skipping config option {} as type not supported", field.getName());
+                    this.addEntry(new StringEntry(field.getDisplayName(), () -> stringField.getValue(configSection), (x) -> stringField.setValue(configSection, x), stringField.getValue(defaultSection)));
                 }
             }
         }
     }
 
+    @Override
     public int getRowWidth() {
         return rowWidth;
     }
 
+    @Override
     protected int getScrollbarPosition() {
-        return this.width / 2 + getRowWidth() / 2 + 4;
+        return this.getX() + this.width / 2 + getRowWidth() / 2 + 4;
     }
 
     public void tick() {
@@ -86,7 +73,6 @@ public class SettingListWidget extends ContainerObjectSelectionList<SettingListW
     }
 
     public class SectionTitleEntry extends SettingEntry {
-
         private final Component displayName;
 
         public SectionTitleEntry(Component displayName) {
@@ -94,25 +80,19 @@ public class SettingListWidget extends ContainerObjectSelectionList<SettingListW
         }
 
         @Override
-        public void render(GuiGraphics graphics, int listIndex, int top, int left, int width, int height, int mouseX, int mouseY, boolean hovered, float delta) {
-            graphics.drawString(SettingListWidget.this.minecraft.font, this.displayName, left + 12, top + 8, 0xFFFFFF, true);
+        public void renderContent(GuiGraphics graphics, int top, int left, boolean hovered, float delta) {
+            graphics.drawString(SettingListWidget.this.minecraft.font, this.displayName, left + 12, top + 6, 0xFFFFFF, true);
         }
 
         @Override
-        public List<? extends NarratableEntry> narratables() {
-            return Collections.emptyList();
-        }
-
+        public List<? extends NarratableEntry> narratables() { return Collections.emptyList(); }
         @Override
-        public List<? extends GuiEventListener> children() {
-            return Collections.emptyList();
-        }
+        public List<? extends GuiEventListener> children() { return Collections.emptyList(); }
     }
 
     public class IntegerEntry extends AbstractWidgetEntry<IntegerSlider> {
-
-        private final Integer defaultValue;
         private final Consumer<Integer> setter;
+        private final Integer defaultValue;
 
         public IntegerEntry(Component displayName, int min, int max, Supplier<Integer> getter, Consumer<Integer> setter, Integer defaultValue) {
             super(new IntegerSlider(0, 0, getRowWidth(), 20, displayName, min, max, getter, setter));
@@ -128,19 +108,16 @@ public class SettingListWidget extends ContainerObjectSelectionList<SettingListW
     }
 
     public class StringEntry extends AbstractWidgetEntry<EditBox> {
-
         private final Component displayName;
         private final Consumer<String> setter;
         private final String defaultValue;
 
         public StringEntry(Component displayName, Supplier<String> getter, Consumer<String> setter, String defaultValue) {
             super(new EditBox(SettingListWidget.this.minecraft.font, 0, 0, getRowWidth(), 20, displayName));
-            widget.setEditable(true);
             this.displayName = displayName;
             this.defaultValue = defaultValue;
             this.setter = setter;
             widget.setValue(getter.get());
-            widget.setEditable(true);
             widget.setResponder(setter);
         }
 
@@ -151,43 +128,26 @@ public class SettingListWidget extends ContainerObjectSelectionList<SettingListW
         }
 
         @Override
-        public boolean mouseClicked(double x, double y, int mouseButton) {
-            if (super.mouseClicked(x, y, mouseButton)) {
-                lastFocused = widget;
-                widget.setFocused(true);
-                return true;
-            }
-            return false;
-        }
-
-        @Override
-        public void render(GuiGraphics graphics, int listIndex, int top, int left, int width, int height, int mouseX, int mouseY, boolean hovered, float delta) {
+        public void renderContent(GuiGraphics graphics, int top, int left, boolean hovered, float delta) {
             int labelLength = SettingListWidget.this.minecraft.font.width(this.displayName);
             graphics.drawString(SettingListWidget.this.minecraft.font, this.displayName, left, top + 6, 0xFFFFFF, true);
             widget.setX(left + labelLength + 6);
             widget.setWidth(getRowWidth() - labelLength - 6);
             widget.setY(top);
-            widget.render(graphics, mouseX, mouseY, delta);
-        }
-
-        @Override
-        public boolean charTyped(char p_94683_, int p_94684_) {
-            return widget.charTyped(p_94683_, p_94684_);
+            widget.render(graphics, 0, 0, delta); // mouseX/Y здесь не важны для EditBox в списке
         }
     }
 
     public class BooleanEntry extends AbstractWidgetEntry<CycleButton<Boolean>> {
-
-        private final Boolean defaultValue;
         private final Consumer<Boolean> setter;
+        private final Boolean defaultValue;
 
         public BooleanEntry(Component displayName, Supplier<Boolean> getter, Consumer<Boolean> setter, Boolean defaultValue) {
-            super(new CycleButton.Builder<Boolean>((x) -> Component.translatable((x) ? "gui.yes" : "gui.no"))
-                    .withValues(Boolean.FALSE, Boolean.TRUE)
+            super(CycleButton.booleanBuilder(Component.translatable("gui.yes"), Component.translatable("gui.no"))
                     .withInitialValue(getter.get())
-                    .create(0, 0, getRowWidth(), 20, displayName, (cycleButton, value) -> setter.accept(value)));
-            this.defaultValue = defaultValue;
+                    .create(0, 0, getRowWidth(), 20, displayName, (btn, val) -> setter.accept(val)));
             this.setter = setter;
+            this.defaultValue = defaultValue;
         }
 
         @Override
@@ -199,36 +159,21 @@ public class SettingListWidget extends ContainerObjectSelectionList<SettingListW
 
     public class ExtendedIntegerEntry extends AbstractWidgetEntry<EditBox> {
         private final Component displayName;
-        private final Integer defaultValue;
         private final Consumer<Integer> setter;
+        private final Integer defaultValue;
 
         public ExtendedIntegerEntry(Component displayName, int min, int max, Supplier<Integer> getter, Consumer<Integer> setter, Integer defaultValue) {
             super(new EditBox(SettingListWidget.this.minecraft.font, 0, 0, getRowWidth(), 20, displayName));
-            widget.setEditable(true);
             this.displayName = displayName;
-            this.defaultValue = defaultValue;
             this.setter = setter;
+            this.defaultValue = defaultValue;
             widget.setFilter(x -> {
-                if (x.isEmpty() || "-".equals(x)) {
-                    return true;
-                }
-                try {
-                    int val = Integer.parseInt(x);
-                    return val >= min && val <= max;
-                } catch (NumberFormatException e) {
-                    return false;
-                }
+                if (x.isEmpty() || "-".equals(x)) return true;
+                try { int val = Integer.parseInt(x); return val >= min && val <= max; } catch (NumberFormatException e) { return false; }
             });
             widget.setValue(getter.get().toString());
-            widget.setEditable(true);
-            widget.setResponder(value -> {
-                if (value.isEmpty() || "-".equals(value)) {
-                    if (0 >= min && 0 <= max) {
-                        setter.accept(0);
-                    }
-                } else {
-                    setter.accept(Integer.parseInt(value));
-                }
+            widget.setResponder(val -> {
+                try { setter.accept(val.isEmpty() || "-".equals(val) ? 0 : Integer.parseInt(val)); } catch (NumberFormatException ignored) {}
             });
         }
 
@@ -239,43 +184,26 @@ public class SettingListWidget extends ContainerObjectSelectionList<SettingListW
         }
 
         @Override
-        public boolean mouseClicked(double x, double y, int mouseButton) {
-            if (super.mouseClicked(x, y, mouseButton)) {
-                lastFocused = widget;
-                widget.setFocused(true);
-                return true;
-            }
-            return false;
-        }
-
-        @Override
-        public void render(GuiGraphics graphics, int listIndex, int top, int left, int width, int height, int mouseX, int mouseY, boolean hovered, float delta) {
+        public void renderContent(GuiGraphics graphics, int top, int left, boolean hovered, float delta) {
             int labelLength = SettingListWidget.this.minecraft.font.width(this.displayName);
             graphics.drawString(SettingListWidget.this.minecraft.font, this.displayName, left, top + 6, 0xFFFFFF, true);
             widget.setX(left + labelLength + 6);
             widget.setWidth(getRowWidth() - labelLength - 6);
             widget.setY(top);
-            widget.render(graphics, mouseX, mouseY, delta);
-        }
-
-        @Override
-        public boolean charTyped(char p_94683_, int p_94684_) {
-            return widget.charTyped(p_94683_, p_94684_);
+            widget.render(graphics, 0, 0, delta);
         }
     }
 
     public class EnumEntry extends AbstractWidgetEntry<CycleButton<Enum<?>>> {
-
-        private final Enum<?> defaultValue;
         private final Consumer<Enum<?>> setter;
+        private final Enum<?> defaultValue;
 
         public EnumEntry(Component displayName, Class<? extends Enum<?>> type, Supplier<Enum<?>> getter, Consumer<Enum<?>> setter, Enum<?> defaultValue) {
             super(new CycleButton.Builder<Enum<?>>((x) -> Component.translatable("enumvalue.chunkbychunk." + type.getSimpleName() + "." + x.name()))
-                    .withValues(type.getEnumConstants())
-                    .withInitialValue(getter.get())
-                    .create(0, 0, getRowWidth(), 20, displayName, (cycleButton, value) -> setter.accept(value)));
-            this.defaultValue = defaultValue;
+                    .withValues(type.getEnumConstants()).withInitialValue(getter.get())
+                    .create(0, 0, getRowWidth(), 20, displayName, (btn, val) -> setter.accept(val)));
             this.setter = setter;
+            this.defaultValue = defaultValue;
         }
 
         @Override
@@ -286,77 +214,41 @@ public class SettingListWidget extends ContainerObjectSelectionList<SettingListW
     }
 
     public abstract class AbstractWidgetEntry<T extends AbstractWidget> extends SettingEntry {
-
         protected final T widget;
-        private boolean dragging;
 
-        public AbstractWidgetEntry(T widget) {
-            this.widget = widget;
-        }
+        public AbstractWidgetEntry(T widget) { this.widget = widget; }
 
         @Override
-        public void render(GuiGraphics graphics, int listIndex, int top, int left, int width, int height, int mouseX, int mouseY, boolean hovered, float delta) {
+        public void renderContent(GuiGraphics graphics, int top, int left, boolean hovered, float delta) {
             widget.setX(left);
             widget.setY(top);
-            widget.render(graphics, mouseX, mouseY, delta);
+            widget.render(graphics, 0, 0, delta);
         }
 
         @Override
-        public boolean mouseClicked(double x, double y, int mouseButton) {
-            if (SettingListWidget.this.lastFocused != null && SettingListWidget.this.lastFocused != widget) {
-                SettingListWidget.this.lastFocused.setFocused(false);
-            }
-            dragging = true;
-            return this.widget.mouseClicked(x, y, mouseButton);
-        }
+        public List<? extends NarratableEntry> narratables() { return Collections.singletonList(widget); }
+        @Override
+        public List<? extends GuiEventListener> children() { return Collections.singletonList(widget); }
 
         @Override
-        public boolean mouseReleased(double x, double y, int mouseButton) {
-            dragging = false;
-            return this.widget.mouseReleased(x, y, mouseButton);
-        }
-
-        @Override
-        public boolean mouseDragged(double x, double y, int mouseButton, double deltaX, double deltaY) {
-            if (dragging) {
-                return this.widget.mouseDragged(x, y, mouseButton, deltaX, deltaY);
+        public boolean mouseClicked(double x, double y, int btn) {
+            if (lastFocused != null && lastFocused != widget) lastFocused.setFocused(false);
+            if (widget.mouseClicked(x, y, btn)) {
+                if (widget instanceof EditBox eb) { lastFocused = eb; eb.setFocused(true); }
+                return true;
             }
             return false;
         }
-
-        @Override
-        public boolean isMouseOver(double p_93537_, double p_93538_) {
-            return this.widget.isMouseOver(p_93537_, p_93538_);
-        }
-
-        @Override
-        public boolean keyPressed(int p_94710_, int p_94711_, int p_94712_) {
-            return this.widget.keyPressed(p_94710_, p_94711_, p_94712_);
-        }
-
-        @Override
-        public boolean keyReleased(int p_94715_, int p_94716_, int p_94717_) {
-            return this.widget.keyReleased(p_94715_, p_94716_, p_94717_);
-        }
-
-        @Override
-        public List<? extends NarratableEntry> narratables() {
-            return Collections.emptyList();
-        }
-
-        @Override
-        public List<? extends GuiEventListener> children() {
-            return Collections.singletonList(widget);
-        }
     }
 
-    public static abstract class SettingEntry extends Entry<SettingEntry> {
+    public static abstract class SettingEntry extends ContainerObjectSelectionList.Entry<SettingEntry> {
+        public void tick() {}
+        public void reset() {}
+        public abstract void renderContent(GuiGraphics graphics, int top, int left, boolean hovered, float delta);
 
-        public void tick() {
-        }
-
-        public void reset() {
+        @Override
+        public void render(GuiGraphics graphics, int index, int top, int left, int width, int height, int mouseX, int mouseY, boolean hovered, float delta) {
+            renderContent(graphics, top, left, hovered, delta);
         }
     }
-
 }

@@ -9,11 +9,8 @@ import net.minecraft.world.entity.player.Inventory;
 import xyz.immortius.chunkbychunk.common.ChunkByChunkConstants;
 import xyz.immortius.chunkbychunk.common.menus.WorldForgeMenu;
 
-/**
- * Screen for the World Forge - this is a single input/output style furnace with animated progress arrow
- */
 public class WorldForgeScreen extends AbstractContainerScreen<WorldForgeMenu> {
-    public static final ResourceLocation CONTAINER_TEXTURE = new ResourceLocation(ChunkByChunkConstants.MOD_ID + ":textures/gui/container/worldforge.png");
+    public static final ResourceLocation CONTAINER_TEXTURE = ResourceLocation.fromNamespaceAndPath(ChunkByChunkConstants.MOD_ID, "textures/gui/container/worldforge.png");
 
     public static final float TICKS_PER_FRAME = 2f;
     public static final int NUM_FRAMES = 8;
@@ -26,7 +23,6 @@ public class WorldForgeScreen extends AbstractContainerScreen<WorldForgeMenu> {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
-        this.renderBackground(graphics, mouseX, mouseY, delta);
         super.render(graphics, mouseX, mouseY, delta);
         this.renderTooltip(graphics, mouseX, mouseY);
     }
@@ -50,5 +46,10 @@ public class WorldForgeScreen extends AbstractContainerScreen<WorldForgeMenu> {
             }
             graphics.blit(CONTAINER_TEXTURE, leftPos + 78, topPos + 37, 176, frame * 11, completion, 11);
         }
+    }
+
+    @Override
+    public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
+        super.renderBackground(graphics, mouseX, mouseY, delta);
     }
 }
