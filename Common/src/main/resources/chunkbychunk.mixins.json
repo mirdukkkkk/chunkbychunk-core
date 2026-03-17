@@ -9,7 +9,8 @@
     "BucketFluidAccessor",
     "DefrostedRegistry",
     "ChunkMapMixin",
-    "OverworldBiomeBuilderAccessor"
+    "OverworldBiomeBuilderAccessor",
+    "MappedRegistryAcc"
   ],
   "client": [],
   "injectors": {

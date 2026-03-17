@@ -44,6 +44,7 @@ import xyz.immortius.chunkbychunk.common.util.SpiralIterator;
 import xyz.immortius.chunkbychunk.config.ChunkByChunkConfig;
 import xyz.immortius.chunkbychunk.config.system.ConfigSystem;
 import xyz.immortius.chunkbychunk.mixins.DefrostedRegistry;
+import xyz.immortius.chunkbychunk.mixins.MappedRegistryAcc;
 import xyz.immortius.chunkbychunk.mixins.OverworldBiomeBuilderAccessor;
 import xyz.immortius.chunkbychunk.server.world.*;
 
@@ -115,11 +116,14 @@ public final class ServerEventHandler {
 
     private static void applyChunkByChunkWorldGeneration(MinecraftServer server) {
         MappedRegistry<LevelStem> dimensions = (MappedRegistry<LevelStem>) server.registryAccess().registryOrThrow(Registries.LEVEL_STEM);
+
+
         MappedRegistry<Biome> biomeRegistry = (MappedRegistry<Biome>) server.registryAccess().registryOrThrow(Registries.BIOME);
         Registry<DimensionType> dimensionTypeRegistry = server.registryAccess().registryOrThrow(Registries.DIMENSION_TYPE);
         Registry<Block> blocks = server.registryAccess().registry(Registries.BLOCK).orElseThrow();
         ((DefrostedRegistry) dimensions).setFrozen(false);
         ((DefrostedRegistry) biomeRegistry).setFrozen(false);
+
 
         for (Map.Entry<ResourceLocation, SkyDimensionData> entry : SkyDimensions.getSkyDimensions().entrySet()) {
             setupDimension(entry.getKey(), entry.getValue(), dimensions, blocks, biomeRegistry, dimensionTypeRegistry);
@@ -147,6 +151,13 @@ public final class ServerEventHandler {
                 }
 
             }
+        }
+    }
+
+    private static void logDimensions(String stage, MappedRegistry<LevelStem> dimensions) {
+        ChunkByChunkConstants.LOGGER.info("=== Dimensions at stage: {} ===", stage);
+        for (ResourceKey<LevelStem> key : dimensions.registryKeySet()) {
+            ChunkByChunkConstants.LOGGER.info("LevelStem key: {}", key.location());
         }
     }
 
@@ -199,10 +210,35 @@ public final class ServerEventHandler {
         if (!(level.generator() instanceof SkyChunkGenerator)) {
             skyGenerator = new SkyChunkGenerator(rootGenerator);
             LevelStem newLevelStem = new LevelStem(level.type(), skyGenerator);
-            dimensions.register(ResourceKey.create(Registries.LEVEL_STEM, ResourceLocation.parse(config.dimensionId)), newLevelStem, new RegistrationInfo(Optional.empty(), Lifecycle.stable()));
+
+            ResourceKey<LevelStem> key =
+                    ResourceKey.create(Registries.LEVEL_STEM, ResourceLocation.parse(config.dimensionId));
+
+            MappedRegistry<LevelStem> reg = dimensions;
+
+            LevelStem oldStem = reg.get(key);
+
+            if (reg.containsKey(key)) {
+                var acc = (MappedRegistryAcc<LevelStem>) reg;
+
+
+                acc.byKey().remove(key);
+                acc.byLocation().remove(key.location());
+                acc.byValue().remove(oldStem);
+                acc.registrationInfos().remove(key);
+
+                int oldId = acc.toId().removeInt(oldStem);
+
+                if (oldId >= 0 && oldId < acc.byId().size()) {
+                    acc.byId().remove(oldId);
+                }
+            }
+
+            reg.register(key, newLevelStem, new RegistrationInfo(Optional.empty(), Lifecycle.stable()));
         } else {
             skyGenerator = (SkyChunkGenerator) level.generator();
         }
+
         Block sealBlock = blocks.get(ResourceLocation.parse(config.sealBlock));
         if (sealBlock == null) {
             sealBlock = Blocks.BEDROCK;
