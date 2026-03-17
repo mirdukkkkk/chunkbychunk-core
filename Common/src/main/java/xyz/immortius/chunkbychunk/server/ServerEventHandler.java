@@ -197,6 +197,21 @@ public final class ServerEventHandler {
         }
     }
 
+    private static void removeStemFromDimensions(ResourceKey<LevelStem> key, MappedRegistry<LevelStem> reg) {
+        LevelStem oldStem = reg.get(key);
+        var acc = (MappedRegistryAcc<LevelStem>) reg;
+        acc.byKey().remove(key);
+        acc.byLocation().remove(key.location());
+        acc.byValue().remove(oldStem);
+        acc.registrationInfos().remove(key);
+
+        int oldId = acc.toId().removeInt(oldStem);
+
+        if (oldId >= 0 && oldId < acc.byId().size()) {
+            acc.byId().remove(oldId);
+        }
+    }
+
     private static SkyChunkGenerator setupCoreGenerationDimension(SkyDimensionData config, MappedRegistry<LevelStem> dimensions, Registry<Block> blocks, Registry<Biome> biomes, LevelStem level, ChunkGenerator rootGenerator) {
         ResourceLocation genDimensionId = config.getGenDimensionId();
         ResourceKey<LevelStem> genLevelId = ResourceKey.create(Registries.LEVEL_STEM, genDimensionId);
@@ -207,36 +222,24 @@ public final class ServerEventHandler {
         }
 
         SkyChunkGenerator skyGenerator;
-        if (!(level.generator() instanceof SkyChunkGenerator)) {
+        MappedRegistry<LevelStem> reg = dimensions;
+
+        ResourceKey<LevelStem> key =
+                ResourceKey.create(Registries.LEVEL_STEM, ResourceLocation.parse(config.dimensionId));
+        LevelStem existingStem = reg.get(key);
+
+        if (generationLevel != null && existingStem != null && existingStem.generator() instanceof SkyChunkGenerator existingSky) {
+            LOGGER.info("Dimension {} already patched, reusing existing SkyChunkGenerator", key.location());
+            skyGenerator = existingSky;
+        } else {
             skyGenerator = new SkyChunkGenerator(rootGenerator);
             LevelStem newLevelStem = new LevelStem(level.type(), skyGenerator);
 
-            ResourceKey<LevelStem> key =
-                    ResourceKey.create(Registries.LEVEL_STEM, ResourceLocation.parse(config.dimensionId));
-
-            MappedRegistry<LevelStem> reg = dimensions;
-
-            LevelStem oldStem = reg.get(key);
-
             if (reg.containsKey(key)) {
-                var acc = (MappedRegistryAcc<LevelStem>) reg;
-
-
-                acc.byKey().remove(key);
-                acc.byLocation().remove(key.location());
-                acc.byValue().remove(oldStem);
-                acc.registrationInfos().remove(key);
-
-                int oldId = acc.toId().removeInt(oldStem);
-
-                if (oldId >= 0 && oldId < acc.byId().size()) {
-                    acc.byId().remove(oldId);
-                }
+                ServerEventHandler.removeStemFromDimensions(key, reg);
             }
 
             reg.register(key, newLevelStem, new RegistrationInfo(Optional.empty(), Lifecycle.stable()));
-        } else {
-            skyGenerator = (SkyChunkGenerator) level.generator();
         }
 
         Block sealBlock = blocks.get(ResourceLocation.parse(config.sealBlock));
@@ -282,7 +285,7 @@ public final class ServerEventHandler {
         LevelStem biomeLevel = new LevelStem(themeDimensionType, new NoiseBasedChunkGenerator(source, ChunkGeneratorAccess.getNoiseGeneratorSettings(rootGenerator)));
         LevelStem existingStem = dimensions.get(levelKey);
         if (existingStem != null) {
-            dimensions.register(levelKey, biomeLevel, new RegistrationInfo(Optional.empty(), Lifecycle.stable()));
+//            dimensions.register(levelKey, biomeLevel, new RegistrationInfo(Optional.empty(), Lifecycle.stable()));
         } else {
             dimensions.register(levelKey, biomeLevel, new RegistrationInfo(Optional.empty(), Lifecycle.stable()));
         }
