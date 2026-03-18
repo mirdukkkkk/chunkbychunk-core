@@ -1,7 +1,7 @@
 {
   "required": true,
   "minVersion": "0.8",
-  "package": "xyz.immortius.chunkbychunk.mixins",
+  "package": "uk.mirdukkkkk.chunkbychunk.mixins",
   "refmap": "${mod_id}.refmap.json",
   "compatibilityLevel": "JAVA_18",
   "mixins": [
